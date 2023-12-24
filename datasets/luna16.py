@@ -116,5 +116,5 @@ class LunaDataModule(L.LightningDataModule):
     def train_dataloader(self):
         return DataLoader(dataset=self.luna_train, batch_size=1, shuffle=True, num_workers=self.num_workers, pin_memory=torch.cuda.is_available(), collate_fn=collate_v8)
     
-    # def val_dataloader(self):
-    #     return DataLoader(dataset=self.luna_val, batch_size=1, shuffle=False, num_workers=self.num_workers, pin_memory=torch.cuda.is_available(), collate_fn=collate_v8)
+    def val_dataloader(self):
+        return DataLoader(dataset=self.luna_val, batch_size=1, shuffle=False, num_workers=self.num_workers, pin_memory=torch.cuda.is_available(), collate_fn=collate_v8)

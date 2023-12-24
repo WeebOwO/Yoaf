@@ -52,7 +52,7 @@ def collate_v8(batches):
                 annot_padded[idx, :annot.shape[0], 1:] = annot
                 annot_padded[idx, :annot.shape[0], 0] = 0
     else:
-        annot_padded = np.ones((len(annots), 1, 6), dtype='float32') * -1
+        annot_padded = -1 * np.ones((len(annots), 1, 7), dtype='float32') 
 
     return {'image': torch.tensor(imgs), 'targets': torch.tensor(annot_padded)} # this is return target
 
