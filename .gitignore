@@ -1,0 +1,11 @@
+error/*
+experiment/
+**__pycache__/
+train.sh
+test.sh
+config
+tb_logs/*
+log.sh
+cufile.log
+error/
+train_10_fold.sh
