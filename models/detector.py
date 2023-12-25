@@ -8,6 +8,7 @@ from .heads import *
 from .backbone import *
 
 from config import net_config
+from utils.box_utils import make_anchors, dist2bbox, nms_3D
 
 from torch.optim.lr_scheduler import CosineAnnealingLR, LinearLR, ReduceLROnPlateau
     
@@ -27,43 +28,25 @@ class Detector(nn.Module):
     
     def set_criterion(self, criterion):
         self.criterion = criterion
-        
-    def decode(self, hm_feature, reg_feature, rad_feature, confidence, stride):
-        hmax = F.max_pool3d(hm_feature, kernel_size=3, stride=1, padding=1) # perform max pooling to generate result
-        keep = (hmax == hm_feature).float()
-        
-        hm_feature = keep * hm_feature
-        pred = hm_feature.squeeze()
-        reg = reg_feature.squeeze().permute(1, 2, 3, 0)
-
-        rad = torch.exp(rad_feature.squeeze())
-        D, H, W = pred.shape
-
-        oz = torch.arange(0, D, 1).cuda()
-        oh = torch.arange(0, H, 1).cuda()
-        ow = torch.arange(0, W, 1).cuda()
-        bbox = torch.ones((D, H, W, 5)).cuda()
-
-        bbox[:, :, :, 0] = pred
-        bbox[:, :, :, 1] = (reg[:, :, :, 0] + oz.reshape(-1, 1, 1)) * stride
-        bbox[:, :, :, 2] = (reg[:, :, :, 1] + oh.reshape(1, -1, 1)) * stride
-        bbox[:, :, :, 3] = (reg[:, :, :, 2] + ow.reshape(1, 1, -1)) * stride
-        bbox[:, :, :, 4] = rad
-        
-        bbox = bbox.reshape(-1, 5)
-        bbox = bbox[bbox[:, 0] > confidence]
-        return bbox
-    
+            
     def inference(self, x):
+        _, _, d, h, w = x.shape
         feature = self.backbone(x)
-        stride = int(x.shape[-1] / feature.shape[-1])
-        hm_feature, reg_feature, rad_feature = self.head(feature)
-        pred = torch.sigmoid(hm_feature)
+        cls_feature, reg_feature = self.head(feature)
+        anchor_points, stride_tensor = make_anchors(cls_feature, (d, h, w), grid_cell_offset=0.5)
         
-        bboxs = self.decode(pred, reg_feature, rad_feature, 0.3, stride)
-        bboxs = bboxs[torch.argsort(-bboxs[:,0])][:net_config['infer_topk']]
+        pred_scores = cls_feature.view(cls_feature.shape[0], 1, -1)
+        pred_distri = reg_feature.view(reg_feature.shape[0], self.head.reg_max * 6, -1)
         
-        return bboxs.cpu().numpy()
+        anchor_points = anchor_points.transpose(0, 1)
+        stride_tensor = stride_tensor.transpose(0, 1)
+        
+        box = dist2bbox(self.head.dfl(pred_distri), anchor_points.unsqueeze(0), xywh=True, dim=1) * stride_tensor
+        probs = pred_scores.sigmoid()
+        
+        pred = torch.cat((probs, box), 1).transpose(1, 2).squeeze()
+        keep = nms_3D(pred)
+        return pred[keep]
         
     def forward(self, x):
         inputs, targets = x
@@ -84,26 +67,20 @@ class Model(L.LightningModule):
             self.warm_up = train_config.get('warm_up', 0) 
             self.t_max =  train_config.get('t_max', 0)
         
-        self.automatic_optimization = False
-
     def configure_optimizers(self):
-        optimizer = torch.optim.SGD(self.detector.parameters(), self.lr or self.learning_rate, momentum=self.momentum, nesterov=True)
+        optimizer = torch.optim.AdamW(self.detector.parameters(), self.lr or self.learning_rate, weight_decay=1e-4)
         lr_warmup = LinearLR(optimizer, start_factor=0.01, end_factor=1, total_iters=self.warm_up)
         cos_lr = CosineAnnealingLR(optimizer, T_max=self.t_max, eta_min=1e-6)
         return [optimizer], [lr_warmup, cos_lr]
             
     def training_step(self, batch, batch_idx):
-        # bs = len(batch[0])
-        optimizer = self.optimizers()
         inputs, targets = batch['image'], batch['targets']
         total_loss, loss_array = self.detector([inputs, targets])
         
         self.log_dict({"total_loss" : total_loss, "box_loss" : loss_array[0], "cls_loss" : loss_array[1], "dfl_loss" : loss_array[2]}, on_epoch=True, batch_size=1, logger=True, reduce_fx='mean')
         self.log("debug_loss", total_loss, prog_bar=True, on_step=True)
         
-        optimizer.zero_grad()
-        self.manual_backward(total_loss)
-        optimizer.step()
+        return total_loss
   
     def on_train_epoch_end(self) -> None:  
         lr_warmup, lr_cos = self.lr_schedulers()
@@ -115,8 +92,8 @@ class Model(L.LightningModule):
     
     def validation_step(self, batch, batch_idx):
         inputs, targets = batch['image'], batch['targets']
-        _, loss_array = self.detector([inputs, targets])
-        self.log('val_loss', loss_array[0], batch_size=1)
+        total_loss, loss_array = self.detector([inputs, targets])
+        self.log('val_loss', total_loss, batch_size=1, on_epoch=True)
     
     def infer_batch(self, batch):
         

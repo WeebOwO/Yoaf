@@ -120,7 +120,7 @@ class DetectionLoss(nn.Module):
         
         self.device = device
         self.assigner = TaskAlignedAssigner(topk=10, num_classes=self.nc, alpha=0.5, beta=6.0)
-        self.proj = torch.arange(self.reg_max , dtype=torch.float).to(device)
+        self.proj = torch.arange(self.reg_max, dtype=torch.float).to(device)
 
         self.crop_size = crop_size
         self.bce = nn.BCEWithLogitsLoss(reduction='none')

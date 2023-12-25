@@ -50,7 +50,7 @@ def main(hparams):
     make_folder([experiment_dir, log_dir, model_dir])
     
     logger = TensorBoardLogger(log_dir, name="my_model")
-    checkpoint_callback = ModelCheckpoint(save_top_k=1, save_weights_only=True, filename='{epoch}', every_n_epochs=5)
+    checkpoint_callback = ModelCheckpoint(monitor='val_loss', save_top_k=1, save_weights_only=True, filename='{epoch}', every_n_epochs=5)
     
     trainer = L.Trainer(
         default_root_dir=experiment_dir,

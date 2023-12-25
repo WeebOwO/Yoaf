@@ -312,6 +312,13 @@ class DFL(nn.Module):
     def forward(self, x):
         """Applies a transformer layer on input tensor 'x' and returns a tensor."""
         b, c, a = x.shape  # batch, channels, anchors
-        return self.conv(x.view(b, c, self.c1, a).transpose(2, 1).softmax(1)).view(b, 6, a)
+        return self.conv(x.view(b, 6, self.c1, a).transpose(2, 1).softmax(1)).view(b, 6, a)
         # return self.conv(x.view(b, self.c1, 4, a).softmax(1)).view(b, 4, a)
-        
+
+
+if __name__ == "__main__":
+    # test dfl 
+    dfl = DFL(8)
+    test_tensor = torch.randn(2, 6 * 8, 32 * 32 * 32)
+    out = dfl(test_tensor)
+    pass

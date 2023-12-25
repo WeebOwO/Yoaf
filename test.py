@@ -51,7 +51,7 @@ def main(hparams):
         with torch.no_grad():
             input = input.cuda().unsqueeze(0)
             bbox = model.detector.inference(input)
-            np.save(os.path.join(save_dir, f'{pid}_pbb.npy'), bbox)
+            np.save(os.path.join(save_dir, f'{pid}_pbb.npy'), bbox[:, :5])
         
     # present froc result
     test_res = []

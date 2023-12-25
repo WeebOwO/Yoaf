@@ -3,6 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from collections import OrderedDict
+from ..block import DFL
 
 class TaskDecomposition(nn.Module):
     def __init__(self, feat_channels, stack_convs, la_down_rate=8):
@@ -69,6 +70,8 @@ class TOOD(nn.Module):
         self.tood_cls = nn.Conv3d(in_channels=self.feat_channels, out_channels=self.cls, kernel_size=1, stride=1) # record score
         self.tood_reg = nn.Conv3d(in_channels=self.feat_channels, out_channels=self.reg_max * 6, kernel_size=1, stride=1) # record reg max
     
+        self.dfl = DFL(self.reg_max)
+    
     def forward(self, x):
         bs = x.shape[0]
         inner_features = []
@@ -87,7 +90,7 @@ class TOOD(nn.Module):
         cls_feat = self.tood_cls(cls_feat)
         reg_feat = self.tood_reg(reg_feat)
         
-        return [cls_feat, reg_feat]
+        return [cls_feat, reg_feat] 
     
 if __name__ == '__main__':
     tood = TOOD()

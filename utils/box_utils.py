@@ -82,13 +82,6 @@ def iou_3D(box1, box2):
     return ious
 
 def bbox_iou(box1, box2, DIoU=True, eps = 1e-7):
-    def zyxdhw2zyxzyx(box, dim=-1):
-        ctr_zyx, dhw = torch.split(box, 3, dim)
-        z1y1x1 = ctr_zyx - dhw/2
-        z2y2x2 = ctr_zyx + dhw/2
-        return torch.cat((z1y1x1, z2y2x2), dim)  # zyxzyx bbox
-    box1 = zyxdhw2zyxzyx(box1)
-    box2 = zyxdhw2zyxzyx(box2)
     # Get the coordinates of bounding boxes
     b1_z1, b1_y1, b1_x1, b1_z2, b1_y2, b1_x2 = box1.chunk(6, -1)
     b2_z1, b2_y1, b2_x1, b2_z2, b2_y2, b2_x2 = box2.chunk(6, -1)
