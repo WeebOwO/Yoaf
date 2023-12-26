@@ -31,7 +31,7 @@ loss_config = {
 } 
 
 train_config = {
-    'gpu_id' : "1",
+    'gpu_id' : "3",
     'fold_num' : 0,
     'rfla' : False,
     'batch_size': 6,

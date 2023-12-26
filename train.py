@@ -10,10 +10,10 @@ from lightning.pytorch.loggers import TensorBoardLogger
 from lightning.pytorch.callbacks import ModelCheckpoint, LearningRateMonitor, LearningRateFinder
 from lightning.pytorch.tuner.tuning import Tuner
 # my module
-from config import config, loss_config
-from models import Model, tood_build_config
+from config import config
+from models import Model, tood_build_config, basic_build_config
 from datasets import LunaDataModule
-from utils.loss import CenterNetLoss, DetectionLoss
+from utils.loss import DetectionLoss
 from utils.misc import make_folder
 # global zone 
 L.seed_everything(seed=42)
@@ -30,27 +30,27 @@ def main(hparams):
         train_config=dict(
             lr=hparams.init_lr,
             momentum=hparams.momentum,
-            warm_up=hparams.warm_up,
+            warm_up=hparams.warm_up, 
             t_max=hparams.epochs-hparams.warm_up
         ),
     )
     
-    model.detector.set_criterion(DetectionLoss(model.detector, device=device, crop_size=config['crop_size'])) # loss need know some model para
+    model.detector.set_criterion(DetectionLoss(model.detector, device=device, crop_size=config['crop_size'], cls_weight=1.0, box_weight=2.5, dfl_weight=1.5)) # loss need know some model para
     # define train config
     luna_data_module = LunaDataModule(json_dir=f"spilts/split_fold{hparams.fold}.json", 
                                       data_dir=config['data_dir'], 
                                       num_workers=hparams.num_workers,
-                                      batch_size=hparams.batch_size,
-                                      box_sigma=hparams.box_sigma,
-                                      use_rlfa=False)
+                                      batch_size=hparams.batch_size)
+
     luna_data_module.setup('fit')
+    
     experiment_dir = config['experiment_dir']      
     log_dir = f"tb_logs/fold{hparams.fold}"
     model_dir = os.path.join(experiment_dir, f"fold{hparams.fold}")
     make_folder([experiment_dir, log_dir, model_dir])
     
     logger = TensorBoardLogger(log_dir, name="my_model")
-    checkpoint_callback = ModelCheckpoint(monitor='val_loss', save_top_k=1, save_weights_only=True, filename='{epoch}', every_n_epochs=5)
+    checkpoint_callback = ModelCheckpoint(monitor='val_loss', save_top_k=1, save_weights_only=True, filename='best')
     
     trainer = L.Trainer(
         default_root_dir=experiment_dir,
@@ -86,8 +86,6 @@ if __name__ == "__main__":
                         help='number of data loading workers')
     parser.add_argument('--warm-up', default=config['warm_up'], type=int, metavar='OUT',
                         help='epochs for warm up')
-    parser.add_argument('--box-sigma', default=config['box_sigma'], type=float, metavar='B',
-                        help='box-sigma')
     parser.add_argument('--fold', default=config['fold_num'], type=int, metavar='F',
                         help='current_fold')    
     parser.add_argument('--accelerator', default='gpu', type=str, metavar='F',

@@ -23,11 +23,11 @@ def activation(act='ReLU'):
         return Identity()
 
 def norm_layer3d(norm_type, num_features):
-    if norm_type == 'batchnorm':
+    if norm_type == 'BatchNorm':
         return nn.BatchNorm3d(num_features=num_features, momentum=0.05)
-    elif norm_type == 'instancenorm':
+    elif norm_type == 'InstanceNorm':
         return nn.InstanceNorm3d(num_features=num_features, affine=True)
-    elif norm_type == 'groupnorm':
+    elif norm_type == 'GroupNorm':
         return nn.GroupNorm(num_groups=num_features // 8, num_channels=num_features)
     else:
         return Identity()

@@ -4,75 +4,6 @@ import torch.nn.functional as F
 
 from .tal import TaskAlignedAssigner
 from .box_utils import make_anchors, dist2bbox, bbox2dist, bbox_iou
-
-class CenterNetLoss(nn.Module):
-    def __init__(self, ratio, pos_threshold, cls_weight, offset_weight, shape_weight, class_neg_weight) -> None:
-        super().__init__()
-        self.ratio = ratio
-        self.pos_threshold = pos_threshold
-        self.cls_weight = cls_weight
-        self.offset_weight = offset_weight
-        self.shape_weight = shape_weight
-        self.class_neg_weight = class_neg_weight
-    
-    def cls_loss(self, pred_score, target_score):
-        ratio = self.ratio
-        pos_threshold = self.pos_threshold
-        pred = torch.sigmoid(pred_score).squeeze()
-        
-        pos_index = target_score.gt(pos_threshold).float()
-        neg_index = target_score.lt(pos_threshold).float()
-
-        neg_weight = torch.pow(1 - target_score, 4)
-        pred = torch.clamp(pred, 1e-5, 1-1e-5)
-
-        pos_loss = torch.log(pred) * torch.pow(1 - pred, 2) * pos_index
-        neg_loss = self.class_neg_weight * torch.log(1 - pred) * torch.pow(pred, 2) * neg_weight * neg_index
-        
-        pos_num = pos_index.float().sum()
-        #OHEM
-        b = neg_loss.shape[0]
-        neg_loss = neg_loss.flatten()
-        numhard_cnt = min(len(neg_loss), int(ratio * pos_num.item() * b))
-        
-        if pos_num > 0:
-            _, index = torch.topk(-neg_loss, numhard_cnt)
-            neg_loss = torch.index_select(neg_loss, -1, index)
-            
-        pos_loss = pos_loss.sum()
-        neg_loss = neg_loss.sum()
-        
-        cls_loss = -(pos_loss + neg_loss) / pos_num if pos_num > 0 else -neg_loss
-            
-        return cls_loss, pos_index, pos_num
-        
-    def forward(self, output, targets):
-        # unpack target
-        target_score = torch.stack([target['hm'] for target in targets])
-        target_offset = torch.stack([target['point_reg'] for target in targets])
-        target_shape = torch.stack([target['rad'] for target in targets])
-        loss = torch.zeros(3, device=target_score.device) # 
-
-        pred_score, pred_offset, pred_shape = output
-        
-        pred_offset = pred_offset.permute(0, 2, 3, 4, 1)
-        pred_shape = pred_shape.squeeze()
-        # get cls loss
-        loss[0], pos_mask, pos_num = self.cls_loss(pred_score, target_score)
-        
-        # get offset and shape loss
-        if pos_num > 0:
-            masked_offset = pred_offset * pos_mask.unsqueeze(-1)
-            masked_shape = pred_shape * pos_mask
-            
-            loss[1] = F.smooth_l1_loss(masked_offset.flatten(), target_offset.flatten(), reduction="sum") / pos_num
-            loss[2] = F.smooth_l1_loss(masked_shape.flatten(), target_shape.flatten(), reduction='sum') / pos_num
-        
-        loss[0] *= self.cls_weight
-        loss[1] *= self.offset_weight
-        loss[2] *= self.shape_weight 
-
-        return loss.sum(), loss.detach()
         
 class BboxLoss(nn.Module):
     """Criterion class for computing training losses during training."""
@@ -110,6 +41,30 @@ class BboxLoss(nn.Module):
         return (F.cross_entropy(pred_dist, tl.view(-1), reduction='none').view(tl.shape) * wl +
                 F.cross_entropy(pred_dist, tr.view(-1), reduction='none').view(tl.shape) * wr).mean(-1, keepdim=True)
 
+class FocalLoss(nn.Module):
+    """Wraps focal loss around existing loss_fcn(), i.e. criteria = FocalLoss(nn.BCEWithLogitsLoss(), gamma=1.5)."""
+
+    def __init__(self, ):
+        """Initializer for FocalLoss class with no parameters."""
+        super().__init__()
+
+    @staticmethod
+    def forward(pred, label, gamma=1.5, alpha=0.25):
+        """Calculates and updates confusion matrix for object detection/classification tasks."""
+        loss = F.binary_cross_entropy_with_logits(pred, label, reduction='none')
+        # p_t = torch.exp(-loss)
+        # loss *= self.alpha * (1.000001 - p_t) ** self.gamma  # non-zero power for gradient stability
+
+        # TF implementation https://github.com/tensorflow/addons/blob/v0.7.1/tensorflow_addons/losses/focal_loss.py
+        pred_prob = pred.sigmoid()  # prob from logits
+        p_t = label * pred_prob + (1 - label) * (1 - pred_prob)
+        modulating_factor = (1.0 - p_t) ** gamma
+        loss *= modulating_factor
+        if alpha > 0:
+            alpha_factor = label * alpha + (1 - label) * (1 - alpha)
+            loss *= alpha_factor
+        return loss.mean(1).sum()
+
 class DetectionLoss(nn.Module):
     def __init__(self, model, device, crop_size, cls_weight=0.5, box_weight=7.5, dfl_weight=1.5) -> None:
         super().__init__()
@@ -123,7 +78,7 @@ class DetectionLoss(nn.Module):
         self.proj = torch.arange(self.reg_max, dtype=torch.float).to(device)
 
         self.crop_size = crop_size
-        self.bce = nn.BCEWithLogitsLoss(reduction='none')
+        self.cls_loss = FocalLoss()
         self.bbox_loss = BboxLoss(self.reg_max - 1, use_dfl=self.use_dfl).to(device)
         
         self.cls_weight = cls_weight
@@ -142,10 +97,7 @@ class DetectionLoss(nn.Module):
         
         pred_scores = preds[0].view(feat.shape[0], 1, -1).permute(0, 2, 1).contiguous()
         pred_distri = preds[1].view(feat.shape[0], self.reg_max * 6, -1).permute(0, 2, 1).contiguous()
-            
-        dtype = pred_scores.dtype
-        batch_size = pred_scores.shape[0]
-        
+                    
         anchor_points, stride_tensor = make_anchors(feat, self.crop_size, 0.5)
         gt_labels, gt_bboxes = targets.split((1, 6), 2)
         mask_gt = gt_bboxes.sum(2, keepdim=True).gt_(0)
@@ -158,7 +110,7 @@ class DetectionLoss(nn.Module):
         
         target_scores_sum = max(target_scores.sum(), 1)
         
-        loss[1] = self.bce(pred_scores, target_scores.to(dtype)).sum() / target_scores_sum  # BCE
+        loss[1] = self.cls_loss(pred_scores, target_scores) / target_scores_sum 
         
         if fg_mask.sum():
             target_bboxes /= stride_tensor
