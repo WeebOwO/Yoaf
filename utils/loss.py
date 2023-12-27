@@ -78,7 +78,7 @@ class DetectionLoss(nn.Module):
         self.proj = torch.arange(self.reg_max, dtype=torch.float).to(device)
 
         self.crop_size = crop_size
-        self.cls_loss = FocalLoss()
+        self.cls_loss = nn.BCEWithLogitsLoss(reduction='none') # or focal loss
         self.bbox_loss = BboxLoss(self.reg_max - 1, use_dfl=self.use_dfl).to(device)
         
         self.cls_weight = cls_weight
@@ -110,7 +110,7 @@ class DetectionLoss(nn.Module):
         
         target_scores_sum = max(target_scores.sum(), 1)
         
-        loss[1] = self.cls_loss(pred_scores, target_scores) / target_scores_sum 
+        loss[1] = self.cls_loss(pred_scores, target_scores).sum() / target_scores_sum 
         
         if fg_mask.sum():
             target_bboxes /= stride_tensor

@@ -69,10 +69,8 @@ class Model(L.LightningModule):
         
     def configure_optimizers(self):
         optimizer = torch.optim.AdamW(self.detector.parameters(), self.lr or self.learning_rate, weight_decay=1e-4)
-        lr_warmup = LinearLR(optimizer, start_factor=0.01, end_factor=1, total_iters=self.warm_up)
-        cos_lr = CosineAnnealingLR(optimizer, T_max=self.t_max, eta_min=1e-6)
-        return [optimizer], [lr_warmup, cos_lr]
-            
+        return [optimizer]
+
     def training_step(self, batch, batch_idx):
         inputs, targets = batch['image'], batch['targets']
         total_loss, loss_array = self.detector([inputs, targets])
@@ -83,12 +81,7 @@ class Model(L.LightningModule):
         return total_loss
   
     def on_train_epoch_end(self) -> None:  
-        lr_warmup, lr_cos = self.lr_schedulers()
-        if self.trainer.current_epoch < self.warm_up:
-            lr_warmup.step()
-        else:
-            lr_cos.step()
-        
+        return 
     
     def validation_step(self, batch, batch_idx):
         inputs, targets = batch['image'], batch['targets']

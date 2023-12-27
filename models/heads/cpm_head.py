@@ -5,6 +5,7 @@ class ClsRegHead(nn.Module):
                  norm_type='GroupNorm', act_type='LeakyReLU'):
         super(ClsRegHead, self).__init__()
         
+        self.cls = cls
         self.reg_max = reg_max
         self.dfl = DFL(self.reg_max)
         
@@ -17,7 +18,7 @@ class ClsRegHead(nn.Module):
                 conv_s.append(
                     ConvBlock(feature_size, feature_size, 3, norm_type=norm_type, act_type=act_type))
         self.conv_s = nn.Sequential(*conv_s)
-        self.cls = nn.Conv3d(feature_size, cls, kernel_size=3, padding=1)
+        self.cls_head = nn.Conv3d(feature_size, cls, kernel_size=3, padding=1)
         
         conv_o = []
         for i in range(conv_num):
@@ -29,9 +30,9 @@ class ClsRegHead(nn.Module):
                     ConvBlock(feature_size, feature_size, 3, norm_type=norm_type, act_type=act_type))
                 
         self.conv_o = nn.Sequential(*conv_o)
-        self.reg = nn.Conv3d(feature_size, self.reg_max * 6, kernel_size=3, padding=1)
+        self.reg_head = nn.Conv3d(feature_size, self.reg_max * 6, kernel_size=3, padding=1)
         
     def forward(self, x):
-        return [self.cls(x), self.reg(x)]
+        return [self.cls_head(x), self.reg_head(x)]
     
         

@@ -8,14 +8,14 @@ from tqdm import tqdm
 from monai.data import load_decathlon_datalist
 
 from config import config
-from models import Model, tood_build_config
+from models import Model, tood_build_config, basic_build_config
 from datasets import Luna16
 from utils.misc import make_folder
 from datasets.transforms import generate_infer_transform
 from evaluationScript.noduleCADEvaluationLUNA16 import noduleCADEvaluation
 
 def main(hparams):
-    model = Model.load_from_checkpoint(hparams.weight, build_dict=tood_build_config())
+    model = Model.load_from_checkpoint(hparams.weight, build_dict=basic_build_config())
     
     # define our dir 
     json_dir = f"spilts/split_fold{hparams.fold}.json"
@@ -33,7 +33,7 @@ def main(hparams):
         base_dir=config['data_dir'],
     )
     
-    dataset = Luna16(data=inference_data, transform=generate_infer_transform(), mode='eval')
+    dataset = Luna16(data=inference_data, transform=generate_infer_transform())
     
     id_list = []
     for data in inference_data:

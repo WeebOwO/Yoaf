@@ -3,7 +3,7 @@ def tood_build_config():
         backbone=dict(
             type="Unet", 
             n_blocks=[2, 3, 3, 3], 
-            norm_type='BatchNorm', 
+            norm_type='InstanceNorm', 
             act_type='ELU',
             coord=True),
         head=dict(
@@ -18,7 +18,7 @@ def basic_build_config():
         backbone=dict(
             type="Unet", 
             n_blocks=[2, 3, 3, 3], 
-            norm_type='BatchNorm', 
+            norm_type='InstanceNorm', 
             act_type='ELU',
             coord=True),
         head=dict(

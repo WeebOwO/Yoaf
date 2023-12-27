@@ -7,8 +7,7 @@ import torch
 import torch.backends.cudnn as cudnn
 import lightning as L
 from lightning.pytorch.loggers import TensorBoardLogger
-from lightning.pytorch.callbacks import ModelCheckpoint, LearningRateMonitor, LearningRateFinder
-from lightning.pytorch.tuner.tuning import Tuner
+from lightning.pytorch.callbacks import ModelCheckpoint, LearningRateMonitor
 # my module
 from config import config
 from models import Model, tood_build_config, basic_build_config
@@ -26,7 +25,7 @@ def main(hparams):
     torch.set_float32_matmul_precision('medium')
     # define our model
     model = Model(
-        build_dict=tood_build_config(),
+        build_dict=basic_build_config(),
         train_config=dict(
             lr=hparams.init_lr,
             momentum=hparams.momentum,
@@ -62,7 +61,7 @@ def main(hparams):
     )
         
     trainer.fit(model, datamodule=luna_data_module)
-    trainer.save_checkpoint(filepath=os.path.join(model_dir, "last.ckpt"))
+    trainer.save_checkpoint(filepath=os.path.join(model_dir, "last.ckpt"), weights_only=True)
 
 if __name__ == "__main__":
     # parse argument
